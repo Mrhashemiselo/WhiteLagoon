@@ -1,0 +1,95 @@
+﻿@model HomeViewModel
+
+<div>
+    <div id="carouselExampleCaptions" class="carousel slide">
+        <div class="carousel-indicators">
+            <button type="button" data-bs-target="#carouselExampleCaptions" data-bs-slide-to="0" class="active" aria-current="true" aria-label="Slide 1"></button>
+            <button type="button" data-bs-target="#carouselExampleCaptions" data-bs-slide-to="1" aria-label="Slide 2"></button>
+        </div>
+        <div class="carousel-inner">
+            <div class="carousel-item active">
+                <img src="~/images/slides2.jpg" class="d-block w-100" alt="slide1">
+                <div class="carousel-caption d-none d-md-block">
+                    <h5>Luxury villas for you</h5>
+                    <p>parking, private pool, free WIFI and etc</p>
+                </div>
+            </div>
+            <div class="carousel-item">
+                <img src="~/images/slides1.jpg" class="d-block w-100" alt="slide2">
+                <div class="carousel-caption d-none d-md-block">
+                    <h5>Villas from around the world</h5>
+                    <p>Asia, Europe, Africa, Australia And America</p>
+                </div>
+            </div>
+        </div>
+        <button class="carousel-control-prev" type="button" data-bs-target="#carouselExampleCaptions" data-bs-slide="prev">
+            <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+            <span class="visually-hidden">Previous</span>
+        </button>
+        <button class="carousel-control-next" type="button" data-bs-target="#carouselExampleCaptions" data-bs-slide="next">
+            <span class="carousel-control-next-icon" aria-hidden="true"></span>
+            <span class="visually-hidden">Next</span>
+        </button>
+    </div>
+    <form method="post" asp-action="GetVillasByDate">
+        <div class="row p-0 mx-0 py-4">
+            <div class="col-12 col-md-5 offset-md-1 pl-2 pr-2 pr-md-0">
+                <div class="form-group">
+                    <label>Check In Date</label>
+                    <input class="form-control" type="date" asp-for="CheckInDate" />
+                </div>
+            </div>
+            <div class="col-9 col-md-3 pl-2 pr-2">
+                <div class="form-group">
+                    <label>No. of nights</label>
+                    <select class="form-select" asp-for="Nights">
+                        @for (int i = 1; i < 11; i++)
+                        {
+                            <option value="@i">@i</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="col-4 col-md-2 pt-4 pr-2">
+                <div class="from-group">
+                    <button type="button" onclick="fnLoadVillaList()" class="btn btn-success btn-block">
+                        <i class="bi bi-search"></i> &nbsp; Check Availability
+                    </button>
+                </div>
+            </div>
+        </div>
+        <partial name="_VillaListPartial" model="Model" />
+    </form>
+</div>
+
+@section scripts{
+    <script>
+        function fnLoadVillaList() { 
+            $('.spinner').show();
+            var objData = {
+                checkInDate: $("#CheckInDate").val(),
+                nights: $("#Nights").val()
+            };
+
+            $.ajax({
+                url: "@Url.Action("GetVillasByDate","Home")",
+                data: objData,
+                type: "Post",
+                success: function (data) {
+                    $("#VillasList").empty();
+                    $("#VillasList").html(data);
+                    $('.spinner').hide();
+                },
+                failure: function (response) {
+                    $('.spinner').hide();
+                    alert(response.responseText);
+                },
+                error: function (response) {
+                    $('.spinner').hide();
+                    alert(response.responseText);
+                },
+            
+            });
+        }
+    </script>
+}
