@@ -1,27 +1,19 @@
-﻿using Dto.Payment;
-using Microsoft.AspNetCore.Authorization;
+﻿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Stripe.Checkout;
 using System.Security.Claims;
 using WhiteLagoon.Application.Common.Interfaces;
 using WhiteLagoon.Application.Common.Utilities;
 using WhiteLagoon.Domain.Entities;
-using ZarinPal.Class;
 
 namespace WhiteLagoon.Web.Controllers;
 public class BookingController : Controller
 {
     private readonly IUnitOfWork _unitOfWork;
-    private Payment _payment;
-    private Authority _authority;
-    private Transactions _transactions;
 
     public BookingController(IUnitOfWork unitOfWork)
     {
         _unitOfWork = unitOfWork;
-        var expose = new Expose();
-        _payment = expose.CreatePayment();
-        _authority = expose.CreateAuthority();
-        _transactions = expose.CreateTransactions();
     }
 
     [Authorize]
@@ -44,7 +36,7 @@ public class BookingController : Controller
             Villa = _unitOfWork.Villa.Get(u => u.Id == villaId, includeProperties: "VillaAmenities"),
             CheckInDate = checkInDate,
             Nights = nights,
-            CheckoutDate = checkInDate.AddDays(nights),
+            CheckOutDate = checkInDate.AddDays(nights),
             UserId = userId,
             Phone = user.PhoneNumber,
             Email = user.Email,
@@ -56,145 +48,160 @@ public class BookingController : Controller
 
     [Authorize]
     [HttpPost]
-    public async Task<IActionResult> FinalizeBooking(Booking booking)
+    public IActionResult FinalizeBooking(Booking booking)
     {
-        var villa = _unitOfWork.Villa.Get(a => a.Id == booking.VillaId);
+        var villa = _unitOfWork.Villa.Get(w => w.Id == booking.VillaId);
         booking.TotalCost = villa.Price * booking.Nights;
         booking.Status = SD.StatusPending;
         booking.BookingDate = DateTime.Now;
         _unitOfWork.Booking.Add(booking);
         _unitOfWork.Save();
-        TempData["Amount"] = booking.TotalCost.ToString();
-        var domain = Request.Scheme + "://" + Request.Host.Value + "/";
-        var req = await _payment.Request(new DtoRequest()
-        {
-            Amount = (int)(booking.TotalCost),
-            CallbackUrl = domain + $"booking/BookingConfirmation?bookingId={booking.Id}.html",
-            Description = "Villa rent payment",
-            Email = booking.Email,
-            Mobile = booking.Phone,
-            MerchantId = "aaaaaaaaaassssssssssddddddddddwqerty"
-        },
-        Payment.Mode.sandbox
-        );
 
-        return Redirect($"https://sandbox.zarinpal.com/pg/StartPay/{req.Authority}");
+        var domain = Request.Scheme + "://" + Request.Host.Value + "/";
+        var options = new SessionCreateOptions
+        {
+            LineItems = new List<SessionLineItemOptions>(),
+            Mode = "payment",
+            SuccessUrl = domain + $"booking/BookingConfirmation?bookingId={booking.Id}.html",
+            CancelUrl = domain + $"booking/FinalizeBooking?villaId={booking.VillaId}&checkInDate={booking.CheckInDate}&nights={booking.Nights}.html"
+        };
+
+        options.LineItems.Add(new SessionLineItemOptions
+        {
+            PriceData = new SessionLineItemPriceDataOptions()
+            {
+                UnitAmount = (long)(booking.TotalCost * 100),
+                Currency = "usd",
+                ProductData = new SessionLineItemPriceDataProductDataOptions()
+                {
+                    Name = villa.Name
+                }
+            },
+            Quantity = 1
+        });
+
+        var service = new SessionService();
+        Session session = service.Create(options);
+        _unitOfWork.Booking.UpdateStripePaymentId(booking.Id, session.Id, session.PaymentIntentId);
+        _unitOfWork.Save();
+        Response.Headers.Add("Location", session.Url);
+        return new StatusCodeResult(303);
     }
 
     [Authorize]
-    public async Task<IActionResult> BookingConfirmation(string authority, string status)
+    public IActionResult BookingConfirmation(int bookingId)
     {
-        int amount = int.Parse(TempData["Amount"].ToString());
-        var verification = await _payment.Verification(new DtoVerification()
-        {
-            Amount = amount,
-            Authority = authority,
-            MerchantId = "aaaaaaaaaassssssssssddddddddddwqerty"
-        },
-        Payment.Mode.sandbox);
+        var bookingFromDb = _unitOfWork.Booking.Get(a => a.Id == bookingId
+            , includeProperties: "User,Villa");
 
-        if (status == "OK")
+        if (bookingFromDb.Status == SD.StatusPending)
         {
-            return View();
+            var service = new SessionService();
+            Session session = service.Get(bookingFromDb.StripeSessionId);
+            if (session.PaymentStatus == "paid")
+            {
+                _unitOfWork.Booking.UpdateStatus(bookingFromDb.Id, SD.StatusApproved, 0);
+                _unitOfWork.Booking.UpdateStripePaymentId(bookingFromDb.Id, session.Id, session.PaymentIntentId);
+                _unitOfWork.Save();
+            }
         }
-        else
-        {
-            TempData["resultStatus"] = $"error, Code: {verification.Status.ToString()}";
-            return View("PaymentFailed");
-        }
+
+        return View(bookingId);
     }
 
+    [Authorize]
+    public IActionResult BookingDetails(int bookingId)
+    {
+        Booking bookingFromDb = _unitOfWork.Booking.Get(u => u.Id == bookingId,
+            includeProperties: "Villa,User");
 
-    #region Need VPN(StripePayment)
-    /// A VPN must be used
+        return View(bookingFromDb);
+    }
+
+    #region BY zarinPal
+    //var expose = new Expose();
+    //_payment = expose.CreatePayment();
+    //    _authority = expose.CreateAuthority();
+    //    _transactions = expose.CreateTransactions();
+    //private Payment _payment;
+    //private Authority _authority;
+    //private Transactions _transactions;
     //[Authorize]
     //[HttpPost]
-    //public IActionResult FinalizeBooking(Booking booking)
+    //public async Task<IActionResult> FinalizeBooking(Booking booking)
     //{
-    //    var villa = unitOfWork.Villa.Get(w => w.Id == booking.VillaId);
+    //    var villa = _unitOfWork.Villa.Get(a => a.Id == booking.VillaId);
     //    booking.TotalCost = villa.Price * booking.Nights;
     //    booking.Status = SD.StatusPending;
     //    booking.BookingDate = DateTime.Now;
-    //    unitOfWork.Booking.Add(booking);
-    //    unitOfWork.Save();
-
-
-
-    //var domain = Request.Scheme + "://" + Request.Host.Value + "/";
-    //var options = new SessionCreateOptions
-    //{
-    //    LineItems = new List<SessionLineItemOptions>(),
-    //    Mode = "payment",
-    //    SuccessUrl = domain + $"booking/BookingConfirmation?bookingId={booking.Id}.html",
-    //    CancelUrl = domain + $"booking/FinalizeBooking?villaId={booking.VillaId}&checkInDate={booking.CheckInDate}&nights={booking.Nights}.html"
-    //};
-
-    //options.LineItems.Add(new SessionLineItemOptions
-    //{
-    //    PriceData = new SessionLineItemPriceDataOptions()
+    //    _unitOfWork.Booking.Add(booking);
+    //    _unitOfWork.Save();
+    //    TempData["Amount"] = booking.TotalCost.ToString();
+    //    var domain = Request.Scheme + "://" + Request.Host.Value + "/";
+    //    var req = await _payment.Request(new DtoRequest()
     //    {
-    //        UnitAmount = (long)(booking.TotalCost * 100),
-    //        Currency = "usd",
-    //        ProductData = new SessionLineItemPriceDataProductDataOptions()
-    //        {
-    //            Name = villa.Name
-    //        }
+    //        Amount = (int)(booking.TotalCost),
+    //        CallbackUrl = domain + $"booking/BookingConfirmation?bookingId={booking.Id}.html",
+    //        Description = "Villa rent payment",
+    //        Email = booking.Email,
+    //        Mobile = booking.Phone,
+    //        MerchantId = "aaaaaaaaaassssssssssddddddddddwqerty"
     //    },
-    //    Quantity = 1
-    //});
+    //    Payment.Mode.sandbox
+    //    );
 
-    //var service = new SessionService();
-    //Session session = service.Create(options);
-    //unitOfWork.Booking.UpdateStripePaymentId(booking.Id, session.Id, session.PaymentIntentId);
-    //unitOfWork.Save();
-    //Response.Headers.Add("Location", session.Url);
-    //return new StatusCodeResult(303);
+    //    return Redirect($"https://sandbox.zarinpal.com/pg/StartPay/{req.Authority}");
     //}
 
     //[Authorize]
-    //public IActionResult BookingConfirmation(int bookingId)
+    //public async Task<IActionResult> BookingConfirmation(string authority, string status)
     //{
-    //var bookingFromDb = unitOfWork.Booking.Get(a => a.Id == bookingId
-    //    , includeProperties: "User,Villa");
-
-    //if (bookingFromDb.Status == SD.StatusPending)
-    //{
-    //    var service = new SessionService();
-    //    Session session = service.Get(bookingFromDb.StripeSessionId);
-    //    if (session.PaymentStatus == "paid")
+    //    int amount = int.Parse(TempData["Amount"].ToString());
+    //    var verification = await _payment.Verification(new DtoVerification()
     //    {
-    //        unitOfWork.Booking.UpdateStatus(bookingFromDb.Id, SD.StatusApproved);
-    //        unitOfWork.Booking.UpdateStripePaymentId(bookingFromDb.Id, session.Id, session.PaymentIntentId);
-    //        unitOfWork.Save();
-    //    }
-    //}
+    //        Amount = amount,
+    //        Authority = authority,
+    //        MerchantId = "aaaaaaaaaassssssssssddddddddddwqerty"
+    //    },
+    //    Payment.Mode.sandbox);
 
-    //return View(bookingId);
+    //    if (status == "OK")
+    //    {
+    //        return View();
+    //    }
+    //    else
+    //    {
+    //        TempData["resultStatus"] = $"error, Code: {verification.Status.ToString()}";
+    //        return View("PaymentFailed");
+    //    }
     //}
     #endregion
 
-    #region API calls
+    #region API Calls
     [HttpGet]
     [Authorize]
-    public IActionResult GetAll()
+    public IActionResult GetAll(string status)
     {
         IEnumerable<Booking> objBookings;
-
-        if (User.IsInRole(SD.Role_Admin))
+        string userId = "";
+        if (string.IsNullOrEmpty(status))
         {
-            objBookings = _unitOfWork.Booking.GetAll(includeProperties: "User,Villa");
-
+            status = "";
         }
-        else
+
+        if (!User.IsInRole(SD.Role_Admin))
         {
             var claimsIdentity = (ClaimsIdentity)User.Identity;
-            var userId = claimsIdentity.FindFirst(ClaimTypes.NameIdentifier).Value;
+            userId = claimsIdentity.FindFirst(ClaimTypes.NameIdentifier).Value;
+        }
 
-            objBookings = _unitOfWork.Booking
-                .GetAll(q => q.UserId == userId, includeProperties: "User,Villa");
+        objBookings = _unitOfWork.Booking.GetAll(filter: null, includeProperties: "Villa,User");
+        if (!string.IsNullOrEmpty(status))
+        {
+            objBookings = objBookings.Where(q => q.Status.ToLower().Equals(status.ToLower()));
         }
         return Json(new { data = objBookings });
-
     }
+
     #endregion
 }

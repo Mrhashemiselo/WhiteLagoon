@@ -31,40 +31,46 @@
             <span class="visually-hidden">Next</span>
         </button>
     </div>
-    <form method="post" asp-action="GetVillasByDate">
+    <form method="post"
+          asp-action="GetVillasByDate">
         <div class="row p-0 mx-0 py-4">
-            <div class="col-12 col-md-5 offset-md-1 pl-2 pr-2 pr-md-0">
+
+            <div class="col-12 col-md-5  offset-md-1 pl-2  pr-2 pr-md-0">
                 <div class="form-group">
                     <label>Check In Date</label>
-                    <input class="form-control" type="date" asp-for="CheckInDate" />
+                    <input asp-for="CheckInDate" type="date" class="form-control" />
                 </div>
             </div>
-            <div class="col-9 col-md-3 pl-2 pr-2">
+
+            <div class="col-8 col-md-3 pl-2 pr-2">
                 <div class="form-group">
                     <label>No. of nights</label>
                     <select class="form-select" asp-for="Nights">
-                        @for (int i = 1; i < 11; i++)
+                        @for (var i = 1; i < 11; i++)
                         {
                             <option value="@i">@i</option>
                         }
                     </select>
                 </div>
             </div>
+
             <div class="col-4 col-md-2 pt-4 pr-2">
-                <div class="from-group">
+                <div class="form-group">
                     <button type="button" onclick="fnLoadVillaList()" class="btn btn-success btn-block">
-                        <i class="bi bi-search"></i> &nbsp; Check Availability
+                        <i class="bi bi-search"></i>  &nbsp; Check Availability
                     </button>
+
                 </div>
             </div>
+
         </div>
         <partial name="_VillaListPartial" model="Model" />
     </form>
 </div>
 
-@section scripts{
+@section scripts {
     <script>
-        function fnLoadVillaList() { 
+        function fnLoadVillaList() {
             $('.spinner').show();
             var objData = {
                 checkInDate: $("#CheckInDate").val(),
@@ -72,9 +78,9 @@
             };
 
             $.ajax({
-                url: "@Url.Action("GetVillasByDate","Home")",
+                type: "POST",
                 data: objData,
-                type: "Post",
+                url: "@Url.Action("GetVillasByDate", "Home")",
                 success: function (data) {
                     $("#VillasList").empty();
                     $("#VillasList").html(data);
@@ -87,8 +93,7 @@
                 error: function (response) {
                     $('.spinner').hide();
                     alert(response.responseText);
-                },
-            
+                }
             });
         }
     </script>

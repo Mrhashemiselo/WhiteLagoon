@@ -33,7 +33,7 @@ public class Booking
     [Required]
     public DateOnly CheckInDate { get; set; }
     [Required]
-    public DateOnly CheckoutDate { get; set; }
+    public DateOnly CheckOutDate { get; set; }
 
     public bool IsPaymentSuccessful { get; set; } = false;
     public DateTime PaymentDate { get; set; }
@@ -45,4 +45,8 @@ public class Booking
     public DateTime ActualCheckOutDate { get; set; }
 
     public int VillaNumber { get; set; }
+
+    [NotMapped]
+    public List<VillaNumber> VillaNumbers { get; set; }
+
 }
