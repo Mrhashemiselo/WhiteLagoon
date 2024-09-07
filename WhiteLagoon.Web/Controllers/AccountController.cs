@@ -110,10 +110,18 @@ public class AccountController(IUnitOfWork unitOfWork,
 
             if (result.Succeeded)
             {
-                if (string.IsNullOrEmpty(loginVM.RedirectUrl))
-                    return RedirectToAction("Index", "Home");
+                var user = await userManager.FindByEmailAsync(loginVM.Email);
+                if (await userManager.IsInRoleAsync(user, SD.Role_Admin))
+                {
+                    return RedirectToAction("Index", "Dashboard");
+                }
                 else
-                    return LocalRedirect(loginVM.RedirectUrl);
+                {
+                    if (string.IsNullOrEmpty(loginVM.RedirectUrl))
+                        return RedirectToAction("Index", "Home");
+                    else
+                        return LocalRedirect(loginVM.RedirectUrl);
+                }
             }
             else
                 ModelState.AddModelError("", "Invalid login attempt");

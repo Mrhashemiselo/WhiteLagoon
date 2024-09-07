@@ -10,36 +10,35 @@
                 </div>
                 <div class="col-6 text-end">
                     <a class="btn btn-secondary my-2"
-                    asp-controller="Booking" asp-action="Index"
-                    ><i class="bi bi-arrow-left-circle"></i> Back to Bookings</a>
+                       asp-controller="Booking" asp-action="Index"><i class="bi bi-arrow-left-circle"></i> Back to Bookings</a>
                 </div>
                 <hr />
-                <partial name="_VillaDetailPartial" model="@Model.Villa"/>
+                <partial name="_VillaDetailPartial" model="@Model.Villa" />
                 <hr />
                 <div class="text-end">
                     <h4 class="text-danger font-weight-bold ">
                         Booking Total :
                         <span style="border-bottom:1px solid #ff6a00">
-                            @Model.TotalCost.ToString("c") 
+                            @Model.TotalCost.ToString("c")
                         </span>
                     </h4>
                 </div>
 
-                <hr/>
+                <hr />
 
                 <form method="post">
                     <div class="row pt-1 mb-3 " style="border-radius:20px; ">
                         <div class="col-12 text-center">
 
                             <button asp-action="GenerateInvoice" asp-route-id="@Model.Id"
-                            asp-route-downloadType="word" type="submit"
+                                    asp-route-downloadType="word" type="submit"
                                     class="btn btn-sm btn-secondary my-1">
                                 <i class="bi bi-file-earmark-word"></i> Generate Invoice (word)
                             </button>
-                            
+
                             <button asp-action="GenerateInvoice" asp-route-id="@Model.Id"
-                                    asp-route-downloadType="pdf"  type="submit"
-                                             class="btn btn-sm btn-secondary my-1">
+                                    asp-route-downloadType="pdf" type="submit"
+                                    class="btn btn-sm btn-secondary my-1">
                                 <i class="bi bi-file-earmark-pdf"></i> Generate Invoice (pdf)
                             </button>
 
@@ -54,7 +53,6 @@
                 <input asp-for="VillaId" hidden />
                 <input asp-for="UserId" hidden />
                 <input asp-for="CheckInDate" hidden />
-               
                 <input asp-for="CheckOutDate" hidden />
                 <input asp-for="Nights" hidden />
                 <div class="row pt-1 mb-3 " style="border-radius:20px; ">
@@ -62,7 +60,7 @@
                         <h3 class="text-success">Enter Booking Details</h3>
                     </div>
                     <div class="col-6">
-                        @if ((Model.Status == SD.StatusApproved || Model.Status == SD.StatusPending) 
+                        @if ((Model.Status == SD.StatusApproved || Model.Status == SD.StatusPending)
                         && User.IsInRole(SD.Role_Admin))
                         {
                             <button type="submit" asp-controller="Booking" asp-action="CancelBooking" class="btn btn-sm btn-outline-danger form-control my-1">
@@ -84,7 +82,7 @@
                         <label class="text-warning">Email</label>
                         <input asp-for="Email" class="form-control" />
                     </div>
-                    
+
                     <div class="form-group pt-2 col-6">
                         <label class="text-warning">No. of nights</label>
                         <input asp-for="Nights" disabled class="form-control" />
@@ -115,11 +113,11 @@
                         <label class="text-warning">Actual Check-out Date</label>
                         <input asp-for="ActualCheckOutDate" disabled class="form-control" />
                     </div>
-                     @if(Model.Status==SD.StatusApproved && User.IsInRole(SD.Role_Admin))
-                        {
-                    <div class="form-group pt-2 col-6">
-                        <label class="text-danger" asp-for="VillaNumber"></label>
-                       
+                    @if (Model.Status == SD.StatusApproved && User.IsInRole(SD.Role_Admin))
+                    {
+                        <div class="form-group pt-2 col-6">
+                            <label class="text-danger" asp-for="VillaNumber"></label>
+
                             <select class="form-select" asp-for="VillaNumber">
                                 @foreach (var item in Model.VillaNumbers)
                                 {

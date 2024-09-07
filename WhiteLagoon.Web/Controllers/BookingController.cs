@@ -54,6 +54,27 @@ public class BookingController : Controller
         booking.TotalCost = villa.Price * booking.Nights;
         booking.Status = SD.StatusPending;
         booking.BookingDate = DateTime.Now;
+
+        var villaNumbersList = _unitOfWork.VillaNumber
+            .GetAll()
+            .ToList();
+        var bookedVillas = _unitOfWork.Booking
+            .GetAll(s => s.Status == SD.StatusApproved || s.Status == SD.StatusCheckedIn)
+            .ToList();
+
+        int roomAvailable = SD.VillaRoomsAvailable_Count
+            (villa.Id, villaNumbersList, booking.CheckInDate, booking.Nights, bookedVillas);
+        if (roomAvailable == 0)
+        {
+            TempData["error"] = "Room has been sold out!";
+            return RedirectToAction(nameof(FinalizeBooking), new
+            {
+                VillaId = booking.VillaId,
+                CheckInDate = booking.CheckInDate,
+                Nights = booking.Nights
+            });
+        }
+
         _unitOfWork.Booking.Add(booking);
         _unitOfWork.Save();
 
@@ -62,8 +83,8 @@ public class BookingController : Controller
         {
             LineItems = new List<SessionLineItemOptions>(),
             Mode = "payment",
-            SuccessUrl = domain + $"booking/BookingConfirmation?bookingId={booking.Id}.html",
-            CancelUrl = domain + $"booking/FinalizeBooking?villaId={booking.VillaId}&checkInDate={booking.CheckInDate}&nights={booking.Nights}.html"
+            SuccessUrl = domain + $"booking/BookingConfirmation?bookingId={booking.Id}",
+            CancelUrl = domain + $"booking/FinalizeBooking?villaId={booking.VillaId}&checkInDate={booking.CheckInDate}&nights={booking.Nights}",
         };
 
         options.LineItems.Add(new SessionLineItemOptions
@@ -115,7 +136,61 @@ public class BookingController : Controller
         Booking bookingFromDb = _unitOfWork.Booking.Get(u => u.Id == bookingId,
             includeProperties: "Villa,User");
 
+        if (bookingFromDb.VillaNumber == 0 && bookingFromDb.Status == SD.StatusApproved)
+        {
+            var availableVillaNumber = AssignAvailableVillaNumberByVilla(bookingFromDb.VillaId);
+            bookingFromDb.VillaNumbers = _unitOfWork.VillaNumber.GetAll(u => u.VillaId == bookingFromDb.VillaId
+            && availableVillaNumber.Any(x => x == u.Villa_Number)).ToList();
+        }
+
         return View(bookingFromDb);
+    }
+
+    [HttpPost]
+    [Authorize(Roles = SD.Role_Admin)]
+    public IActionResult CheckIn(Booking booking)
+    {
+        _unitOfWork.Booking.UpdateStatus(booking.Id, SD.StatusCheckedIn, booking.VillaNumber);
+        _unitOfWork.Save();
+        TempData["success"] = "Booking updated successfully.";
+        return RedirectToAction(nameof(BookingDetails), new { BookingId = booking.Id });
+    }
+
+    [HttpPost]
+    [Authorize(Roles = SD.Role_Admin)]
+    public IActionResult CheckOut(Booking booking)
+    {
+        _unitOfWork.Booking.UpdateStatus(booking.Id, SD.StatusCompleted, booking.VillaNumber);
+        _unitOfWork.Save();
+        TempData["success"] = "Booking updated successfully.";
+        return RedirectToAction(nameof(BookingDetails), new { BookingId = booking.Id });
+    }
+
+    [HttpPost]
+    [Authorize(Roles = SD.Role_Admin)]
+    public IActionResult CancelBooking(Booking booking)
+    {
+        _unitOfWork.Booking.UpdateStatus(booking.Id, SD.StatusCanceled, 0);
+        _unitOfWork.Save();
+        TempData["success"] = "Booking cancelled successfully.";
+        return RedirectToAction(nameof(BookingDetails), new { BookingId = booking.Id });
+    }
+
+    private List<int> AssignAvailableVillaNumberByVilla(int villaId)
+    {
+        List<int> availableVillaNumbers = new();
+        var villaNumbers = _unitOfWork.VillaNumber.GetAll(e => e.VillaId == villaId);
+        var checkedInVilla = _unitOfWork.Booking.GetAll(q => q.VillaId == villaId && q.Status == SD.StatusCheckedIn)
+            .Select(w => w.VillaNumber);
+
+        foreach (var villaNumber in villaNumbers)
+        {
+            if (!checkedInVilla.Contains(villaNumber.Villa_Number))
+            {
+                availableVillaNumbers.Add(villaNumber.Villa_Number);
+            }
+        }
+        return availableVillaNumbers;
     }
 
     #region BY zarinPal

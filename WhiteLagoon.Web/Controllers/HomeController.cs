@@ -35,7 +35,8 @@ public class HomeController(IUnitOfWork unitOfWork) : Controller
 
         foreach (var villa in villaList)
         {
-            int roomAvailable = SD.VillaRoomsAvailable_Count(villa.Id, villaNumbersList, checkInDate, nights, bookedVillas);
+            int roomAvailable = SD.VillaRoomsAvailable_Count
+                (villa.Id, villaNumbersList, checkInDate, nights, bookedVillas);
             villa.IsAvailable = roomAvailable > 0 ? true : false;
         }
         HomeViewModel homeVM = new()
