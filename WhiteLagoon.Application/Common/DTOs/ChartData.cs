@@ -1,4 +1,4 @@
-﻿namespace WhiteLagoon.Web.ViewModels;
+﻿namespace WhiteLagoon.Application.Common.DTOs;
 
 public class ChartData
 {

@@ -1,15 +1,13 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
-using WhiteLagoon.Application.Common.Interfaces;
 using WhiteLagoon.Application.Common.Utilities;
 using WhiteLagoon.Domain.Entities;
 using WhiteLagoon.Web.ViewModels;
 
 namespace WhiteLagoon.Web.Controllers;
 
-public class AccountController(IUnitOfWork unitOfWork,
-    UserManager<ApplicationUser> userManager,
+public class AccountController(UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     RoleManager<IdentityRole> roleManager) : Controller
 {
@@ -27,11 +25,7 @@ public class AccountController(IUnitOfWork unitOfWork,
     public IActionResult Register(string returnUrl = null)
     {
         returnUrl ??= Url.Content("~/");
-        if (!roleManager.RoleExistsAsync(SD.Role_Admin).GetAwaiter().GetResult())
-        {
-            roleManager.CreateAsync(new IdentityRole(SD.Role_Admin)).Wait();
-            roleManager.CreateAsync(new IdentityRole(SD.Role_Customer)).Wait();
-        }
+
 
         RegisterViewModel registerVM = new()
         {

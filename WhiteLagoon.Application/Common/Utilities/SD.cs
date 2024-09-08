@@ -1,7 +1,8 @@
-﻿using WhiteLagoon.Domain.Entities;
+﻿using WhiteLagoon.Application.Common.DTOs;
+using WhiteLagoon.Domain.Entities;
 
 namespace WhiteLagoon.Application.Common.Utilities;
-public class SD //StaticDetail
+public class SD //StaticDetails
 {
     public const string Role_Customer = "Customer";
     public const string Role_Admin = "Admin";
@@ -52,5 +53,24 @@ public class SD //StaticDetail
             }
         }
         return finalAvailableRoomForAllNights;
+    }
+
+    public static RedialBarChartDto GetRedialCartDataModel(int totalCount, double currentMonthCount, double prevMonthCount)
+    {
+        RedialBarChartDto redialBarChartDto = new();
+
+        int increaseDecreaseRatio = 100;
+
+        if (prevMonthCount != 0)
+        {
+            increaseDecreaseRatio = Convert.ToInt32((currentMonthCount - prevMonthCount) / prevMonthCount * 100);
+        }
+
+        redialBarChartDto.TotalCount = totalCount;
+        redialBarChartDto.CountInCurrentMonth = (int)currentMonthCount;
+        redialBarChartDto.HasRatioIncreased = currentMonthCount > prevMonthCount;
+        redialBarChartDto.Series = [increaseDecreaseRatio];
+
+        return redialBarChartDto;
     }
 }
