@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Hosting;
 using WhiteLagoon.Application.Common.Interfaces;
+using WhiteLagoon.Application.Common.Utilities;
 using WhiteLagoon.Application.Services.Interface;
 using WhiteLagoon.Domain.Entities;
 
@@ -57,12 +58,49 @@ public class VillaService(IUnitOfWork unitOfWork, IWebHostEnvironment webHostEnv
 
     public IEnumerable<Villa> GetAllVillas()
     {
-        return unitOfWork.Villa.GetAll();
+        return unitOfWork.Villa.GetAll(includeProperties: "VillaAmenity");
     }
 
     public Villa GetVillaById(int id)
     {
-        return unitOfWork.Villa.Get(s => s.Id == id);
+        return unitOfWork.Villa.Get(s => s.Id == id, includeProperties: "VillaAmenity");
+    }
+
+    public IEnumerable<Villa> GetVillasAvailabilityByDate(int nights, DateOnly checkInDate)
+    {
+        var villaList = unitOfWork.Villa
+            .GetAll(includeProperties: "VillaAmenities")
+            .ToList();
+        var villaNumbersList = unitOfWork.VillaNumber
+            .GetAll()
+            .ToList();
+        var bookedVillas = unitOfWork.Booking
+            .GetAll(s => s.Status == SD.StatusApproved || s.Status == SD.StatusCheckedIn)
+            .ToList();
+
+        foreach (var villa in villaList)
+        {
+            int roomAvailable = SD.VillaRoomsAvailable_Count
+                (villa.Id, villaNumbersList, checkInDate, nights, bookedVillas);
+            villa.IsAvailable = roomAvailable > 0 ? true : false;
+        }
+
+        return villaList;
+    }
+
+    public bool IsVillaAvailableByDate(int villaId, int nights, DateOnly checkInDate)
+    {
+        var villaNumbersList = unitOfWork.VillaNumber
+           .GetAll()
+           .ToList();
+        var bookedVillas = unitOfWork.Booking
+            .GetAll(s => s.Status == SD.StatusApproved || s.Status == SD.StatusCheckedIn)
+            .ToList();
+
+        int roomAvailable = SD.VillaRoomsAvailable_Count
+            (villaId, villaNumbersList, checkInDate, nights, bookedVillas);
+
+        return roomAvailable > 0;
     }
 
     public void UpdateVilla(Villa villa)

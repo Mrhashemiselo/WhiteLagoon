@@ -5,6 +5,11 @@ using WhiteLagoon.Domain.Entities;
 namespace WhiteLagoon.Application.Services.Implementation;
 public class VillaNumberService(IUnitOfWork unitOfWork) : IVillaNumberService
 {
+    public bool CheckVillaNumberExists(int villa_number)
+    {
+        return unitOfWork.VillaNumber
+            .Any(t => t.Villa_Number == villa_number);
+    }
 
     public void CreateVillaNumber(VillaNumber villaNumber)
     {
@@ -16,10 +21,10 @@ public class VillaNumberService(IUnitOfWork unitOfWork) : IVillaNumberService
     {
         try
         {
-            var dbVilla = unitOfWork.VillaNumber.Get(x => x.Villa_Number == id);
-            if (dbVilla is not null)
+            var dbVillaNumber = unitOfWork.VillaNumber.Get(x => x.Villa_Number == id);
+            if (dbVillaNumber is not null)
             {
-                unitOfWork.VillaNumber.Remove(dbVilla);
+                unitOfWork.VillaNumber.Remove(dbVillaNumber);
                 unitOfWork.Save();
                 return true;
             }
@@ -32,14 +37,14 @@ public class VillaNumberService(IUnitOfWork unitOfWork) : IVillaNumberService
         }
     }
 
-    public IEnumerable<VillaNumber> GetAllVillaNumber()
+    public IEnumerable<VillaNumber> GetAllVillaNumbers()
     {
-        return unitOfWork.VillaNumber.GetAll();
+        return unitOfWork.VillaNumber.GetAll(includeProperties: "Villa");
     }
 
     public VillaNumber GetVillaNumberById(int id)
     {
-        return unitOfWork.VillaNumber.Get(s => s.Villa_Number == id);
+        return unitOfWork.VillaNumber.Get(s => s.Villa_Number == id, includeProperties: "Villa");
     }
 
     public void UpdateVillaNumber(VillaNumber villaNumber)

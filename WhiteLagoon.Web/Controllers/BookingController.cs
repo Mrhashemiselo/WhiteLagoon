@@ -1,27 +1,22 @@
 ﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Stripe.Checkout;
 using Syncfusion.DocIO;
 using Syncfusion.DocIO.DLS;
 using Syncfusion.DocIORenderer;
 using System.Security.Claims;
-using WhiteLagoon.Application.Common.Interfaces;
 using WhiteLagoon.Application.Common.Utilities;
+using WhiteLagoon.Application.Services.Interface;
 using WhiteLagoon.Domain.Entities;
 
 namespace WhiteLagoon.Web.Controllers;
-public class BookingController : Controller
+public class BookingController(IWebHostEnvironment webHostEnvironment,
+    IVillaService villaService,
+    IBookingService bookingService,
+    IVillaNumberService villaNumberService,
+    UserManager<ApplicationUser> userManager) : Controller
 {
-    private readonly IUnitOfWork _unitOfWork;
-    private readonly IWebHostEnvironment _webHostEnvironment;
-
-    public BookingController(IUnitOfWork unitOfWork,
-        IWebHostEnvironment webHostEnvironment)
-    {
-        _unitOfWork = unitOfWork;
-        _webHostEnvironment = webHostEnvironment;
-    }
-
     [Authorize]
     public IActionResult Index()
     {
@@ -34,12 +29,12 @@ public class BookingController : Controller
         var claimsIdentity = (ClaimsIdentity)User.Identity;
         var userId = claimsIdentity.FindFirst(ClaimTypes.NameIdentifier).Value;
 
-        ApplicationUser user = _unitOfWork.User.Get(s => s.Id == userId);
+        ApplicationUser user = userManager.FindByIdAsync(userId).GetAwaiter().GetResult();
 
         Booking booking = new()
         {
             VillaId = villaId,
-            Villa = _unitOfWork.Villa.Get(u => u.Id == villaId, includeProperties: "VillaAmenities"),
+            Villa = villaService.GetVillaById(villaId),
             CheckInDate = checkInDate,
             Nights = nights,
             CheckOutDate = checkInDate.AddDays(nights),
@@ -56,21 +51,12 @@ public class BookingController : Controller
     [HttpPost]
     public IActionResult FinalizeBooking(Booking booking)
     {
-        var villa = _unitOfWork.Villa.Get(w => w.Id == booking.VillaId);
+        var villa = villaService.GetVillaById(booking.VillaId);
         booking.TotalCost = villa.Price * booking.Nights;
         booking.Status = SD.StatusPending;
         booking.BookingDate = DateTime.Now;
 
-        var villaNumbersList = _unitOfWork.VillaNumber
-            .GetAll()
-            .ToList();
-        var bookedVillas = _unitOfWork.Booking
-            .GetAll(s => s.Status == SD.StatusApproved || s.Status == SD.StatusCheckedIn)
-            .ToList();
-
-        int roomAvailable = SD.VillaRoomsAvailable_Count
-            (villa.Id, villaNumbersList, booking.CheckInDate, booking.Nights, bookedVillas);
-        if (roomAvailable == 0)
+        if (!villaService.IsVillaAvailableByDate(villa.Id, booking.Nights, booking.CheckInDate))
         {
             TempData["error"] = "Room has been sold out!";
             return RedirectToAction(nameof(FinalizeBooking), new
@@ -81,8 +67,7 @@ public class BookingController : Controller
             });
         }
 
-        _unitOfWork.Booking.Add(booking);
-        _unitOfWork.Save();
+        bookingService.CreateBooking(booking);
 
         var domain = Request.Scheme + "://" + Request.Host.Value + "/";
         var options = new SessionCreateOptions
@@ -109,8 +94,7 @@ public class BookingController : Controller
 
         var service = new SessionService();
         Session session = service.Create(options);
-        _unitOfWork.Booking.UpdateStripePaymentId(booking.Id, session.Id, session.PaymentIntentId);
-        _unitOfWork.Save();
+        bookingService.UpdateStripePaymentId(booking.Id, session.Id, session.PaymentIntentId);
         Response.Headers.Add("Location", session.Url);
         return new StatusCodeResult(303);
     }
@@ -118,8 +102,7 @@ public class BookingController : Controller
     [Authorize]
     public IActionResult BookingConfirmation(int bookingId)
     {
-        var bookingFromDb = _unitOfWork.Booking.Get(a => a.Id == bookingId
-            , includeProperties: "User,Villa");
+        var bookingFromDb = bookingService.GetBookingById(bookingId);
 
         if (bookingFromDb.Status == SD.StatusPending)
         {
@@ -127,9 +110,8 @@ public class BookingController : Controller
             Session session = service.Get(bookingFromDb.StripeSessionId);
             if (session.PaymentStatus == "paid")
             {
-                _unitOfWork.Booking.UpdateStatus(bookingFromDb.Id, SD.StatusApproved, 0);
-                _unitOfWork.Booking.UpdateStripePaymentId(bookingFromDb.Id, session.Id, session.PaymentIntentId);
-                _unitOfWork.Save();
+                bookingService.UpdateStatus(bookingFromDb.Id, SD.StatusApproved, 0);
+                bookingService.UpdateStripePaymentId(bookingFromDb.Id, session.Id, session.PaymentIntentId);
             }
         }
 
@@ -139,14 +121,15 @@ public class BookingController : Controller
     [Authorize]
     public IActionResult BookingDetails(int bookingId)
     {
-        Booking bookingFromDb = _unitOfWork.Booking.Get(u => u.Id == bookingId,
-            includeProperties: "Villa,User");
+        Booking bookingFromDb = bookingService.GetBookingById(bookingId);
 
         if (bookingFromDb.VillaNumber == 0 && bookingFromDb.Status == SD.StatusApproved)
         {
             var availableVillaNumber = AssignAvailableVillaNumberByVilla(bookingFromDb.VillaId);
-            bookingFromDb.VillaNumbers = _unitOfWork.VillaNumber.GetAll(u => u.VillaId == bookingFromDb.VillaId
-            && availableVillaNumber.Any(x => x == u.Villa_Number)).ToList();
+            bookingFromDb.VillaNumbers = villaNumberService.GetAllVillaNumbers()
+                .Where(u => u.VillaId == bookingFromDb.VillaId
+                       && availableVillaNumber.Any(x => x == u.Villa_Number))
+                .ToList();
         }
 
         return View(bookingFromDb);
@@ -156,7 +139,7 @@ public class BookingController : Controller
     [Authorize]
     public IActionResult GenerateInvoice(int id)
     {
-        string basePath = _webHostEnvironment.WebRootPath;
+        string basePath = webHostEnvironment.WebRootPath;
 
         WordDocument document = new();
 
@@ -164,8 +147,7 @@ public class BookingController : Controller
         using FileStream fileStream = new(dataPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
         document.Open(fileStream, FormatType.Automatic);
 
-        Booking bookingFromDb = _unitOfWork.Booking.Get(u => u.Id == id,
-            includeProperties: "User, Villa");
+        Booking bookingFromDb = bookingService.GetBookingById(id);
 
         TextSelection textSelection = document.Find("xx_customer_name", false, true);
         WTextRange textRange = textSelection.GetAsOneRange();
@@ -184,8 +166,7 @@ public class BookingController : Controller
     [Authorize(Roles = SD.Role_Admin)]
     public IActionResult CheckIn(Booking booking)
     {
-        _unitOfWork.Booking.UpdateStatus(booking.Id, SD.StatusCheckedIn, booking.VillaNumber);
-        _unitOfWork.Save();
+        bookingService.UpdateStatus(booking.Id, SD.StatusCheckedIn, booking.VillaNumber);
         TempData["success"] = "Booking updated successfully.";
         return RedirectToAction(nameof(BookingDetails), new { BookingId = booking.Id });
     }
@@ -194,8 +175,7 @@ public class BookingController : Controller
     [Authorize(Roles = SD.Role_Admin)]
     public IActionResult CheckOut(Booking booking)
     {
-        _unitOfWork.Booking.UpdateStatus(booking.Id, SD.StatusCompleted, booking.VillaNumber);
-        _unitOfWork.Save();
+        bookingService.UpdateStatus(booking.Id, SD.StatusCompleted, booking.VillaNumber);
         TempData["success"] = "Booking updated successfully.";
         return RedirectToAction(nameof(BookingDetails), new { BookingId = booking.Id });
     }
@@ -204,8 +184,7 @@ public class BookingController : Controller
     [Authorize(Roles = SD.Role_Admin)]
     public IActionResult CancelBooking(Booking booking)
     {
-        _unitOfWork.Booking.UpdateStatus(booking.Id, SD.StatusCanceled, 0);
-        _unitOfWork.Save();
+        bookingService.UpdateStatus(booking.Id, SD.StatusCanceled, 0);
         TempData["success"] = "Booking cancelled successfully.";
         return RedirectToAction(nameof(BookingDetails), new { BookingId = booking.Id });
     }
@@ -213,9 +192,9 @@ public class BookingController : Controller
     private List<int> AssignAvailableVillaNumberByVilla(int villaId)
     {
         List<int> availableVillaNumbers = new();
-        var villaNumbers = _unitOfWork.VillaNumber.GetAll(e => e.VillaId == villaId);
-        var checkedInVilla = _unitOfWork.Booking.GetAll(q => q.VillaId == villaId && q.Status == SD.StatusCheckedIn)
-            .Select(w => w.VillaNumber);
+        var villaNumbers = villaNumberService.GetAllVillaNumbers()
+            .Where(e => e.VillaId == villaId);
+        var checkedInVilla = bookingService.GetCheckedInVillaNumbers(villaId);
 
         foreach (var villaNumber in villaNumbers)
         {
@@ -304,11 +283,8 @@ public class BookingController : Controller
             userId = claimsIdentity.FindFirst(ClaimTypes.NameIdentifier).Value;
         }
 
-        objBookings = _unitOfWork.Booking.GetAll(filter: null, includeProperties: "Villa,User");
-        if (!string.IsNullOrEmpty(status))
-        {
-            objBookings = objBookings.Where(q => q.Status.ToLower().Equals(status.ToLower()));
-        }
+        objBookings = bookingService.GetAllBookings(userId, status);
+
         return Json(new { data = objBookings });
     }
 
